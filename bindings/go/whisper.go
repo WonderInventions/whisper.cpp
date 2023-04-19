@@ -2,6 +2,7 @@ package whisper
 
 import (
 	"errors"
+	"sync"
 	"unsafe"
 )
 
@@ -369,11 +370,15 @@ func (ctx *Context) Whisper_full_get_token_p(segment int, token int) float32 {
 // CALLBACKS
 
 var (
-	cbNewSegment   = make(map[unsafe.Pointer]func(int))
-	cbEncoderBegin = make(map[unsafe.Pointer]func() bool)
+	cbNewSegment     = make(map[unsafe.Pointer]func(int))
+	cbNewSegmentMu   sync.Mutex
+	cbEncoderBegin   = make(map[unsafe.Pointer]func() bool)
+	cbEncoderBeginMu sync.Mutex
 )
 
 func registerNewSegmentCallback(ctx *Context, fn func(int)) {
+	cbNewSegmentMu.Lock()
+	defer cbNewSegmentMu.Unlock()
 	if fn == nil {
 		delete(cbNewSegment, unsafe.Pointer(ctx))
 	} else {
@@ -382,6 +387,8 @@ func registerNewSegmentCallback(ctx *Context, fn func(int)) {
 }
 
 func registerEncoderBeginCallback(ctx *Context, fn func() bool) {
+	cbEncoderBeginMu.Lock()
+	defer cbEncoderBeginMu.Unlock()
 	if fn == nil {
 		delete(cbEncoderBegin, unsafe.Pointer(ctx))
 	} else {
@@ -391,6 +398,8 @@ func registerEncoderBeginCallback(ctx *Context, fn func() bool) {
 
 //export callNewSegment
 func callNewSegment(user_data unsafe.Pointer, new C.int) {
+	cbNewSegmentMu.Lock()
+	defer cbNewSegmentMu.Unlock()
 	if fn, ok := cbNewSegment[user_data]; ok {
 		fn(int(new))
 	}
@@ -398,6 +407,8 @@ func callNewSegment(user_data unsafe.Pointer, new C.int) {
 
 //export callEncoderBegin
 func callEncoderBegin(user_data unsafe.Pointer) C.bool {
+	cbEncoderBeginMu.Lock()
+	defer cbEncoderBeginMu.Unlock()
 	if fn, ok := cbEncoderBegin[user_data]; ok {
 		if fn() {
 			return C.bool(true)
